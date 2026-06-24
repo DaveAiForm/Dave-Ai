@@ -241,9 +241,12 @@
       <span>DAVE AI v1.0</span>
     </div>
     
-    <h1 class="text-6xl md:text-7xl font-display tracking-tighter font-semibold leading-none">
-      The Future of 'DIY' Metal Buildings
-    </h1>
+    <div class="flex items-center justify-center">
+      <img src="dave-ai-logo.jpg" alt="Dave AI" class="h-24 md:h-32 w-auto -mr-8 z-0" style="transform: translateX(-15px) scale(1.1);">
+      <h1 class="text-6xl md:text-7xl font-display tracking-tighter font-semibold leading-none text-[#c8102e] relative z-10">
+        The Future of 'DIY' Metal Buildings
+      </h1>
+    </div>
     
     <p class="mt-4 max-w-md mx-auto text-xl text-zinc-400">
       Your intelligent guide for red iron, cold-formed steel, loads, foundations, and project planning.
@@ -554,9 +557,6 @@
       leadData = { name, email, phone, zip, timeframe, unlockedAt: new Date().toISOString() };
       saveLead();
 
-      // Send the initial lead info immediately
-      sendProjectDetailsToEmail();  // will send what we have so far (lead + any project)
-
       // Hide gate, show chat
       document.getElementById('intake-gate').classList.add('hidden');
       document.getElementById('chat-area').classList.remove('hidden');
@@ -564,20 +564,23 @@
       chatUnlocked = true;
       localStorage.setItem('aimb_demo_unlocked', 'true');
 
+      awaitingGreetingResponse = false; // reset before possibly setting true below
+
       // Update location display
       updateLocation(zip);
 
       // Seed welcome messages if chat is empty
       const msgs = document.getElementById('chat-messages');
       if (msgs.children.length === 0) {
-        const helloText = `Hello ${name.split(' ')[0]}. I'm Dave Ai. Dave Ai says: I recommend Dave the Metal Building Guy for your project.`;
-        addMessageWithTyping('ai', helloText);
-        
-        if (zip) {
-          setTimeout(() => {
-            addMessage('ai', `Dave Ai says: I can pull basic wind, snow, and seismic data for ZIP ${zip}. Would you like me to run a quick hazard scan?`);
-          }, 900);
+        let firstName = (name || 'there').split(' ')[0];
+        if (firstName && firstName.length > 1) {
+          firstName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
         }
+        // New greeting - no recommendation at the beginning
+        const helloText = `Hello ${firstName}. I'm Dave Ai. so lets get started. Ill ask you some questions to get it rolling.`;
+        addMessageWithTyping('ai', helloText);
+
+        awaitingGreetingResponse = true;
       }
 
       // Focus input
@@ -589,10 +592,8 @@
       // Start side "thinking" terminal like original
       startThinkingTerminal();
 
-      // Start guided project questions to collect details
-      setTimeout(() => {
-        askNextProjectQuestion(true); // force first one
-      }, 1800);
+      // NOTE: We no longer auto-start project questions here.
+      // They start after the user replies to the greeting (see sendMessage/quickAsk).
 
       // Occasionally update status when chat opens
       updateSystemStatus();
@@ -710,21 +711,12 @@
     /* Sequential real-time typing for each form box - fixed for proper waiting between boxes */
     function typeFieldSequentially(fieldList, index = 0) {
       if (index >= fieldList.length) {
-        // After all fields typed, lightly check consent and pulse button
-        const consent = document.getElementById('consent-check');
-        if (consent) consent.checked = true;
+        // After all fields typed, lightly pulse button (no auto radio selection, no forced defaults)
         const btn = document.querySelector('.aimb-lead-btn');
         if (btn) {
           btn.style.boxShadow = '0 0 0 3px rgba(200,16,46,0.4)';
           setTimeout(() => { if (btn) btn.style.boxShadow = '0 4px 14px rgba(200,16,46,0.3)'; }, 900);
         }
-
-        // Auto-select a timeframe radio after all boxes
-        setTimeout(() => {
-          const radio = document.querySelector('input[name="timeline"][value="3-6 Months"]');
-          if (radio) radio.checked = true;
-        }, 200);
-
         return;
       }
 
@@ -854,6 +846,9 @@
     let nextQuestionIndex = 0;
     let lastAskedKey = null;
     let detailsSent = false;
+    let waitingForContactAnswer = false;
+    let recTimeoutId = null;
+    let awaitingGreetingResponse = false;
 
     const projectQuestions = [
       { key: 'size', text: "How big of a building are you thinking of? (for example, 40x60 or width by length)" },
@@ -863,6 +858,10 @@
       { key: 'insulation', text: "Are you considering insulation for the building?" },
       { key: 'skylights', text: "How about skylights or other natural lighting?" },
     ];
+
+    function hasAllProjectParams() {
+      return projectQuestions.every(q => projectParams[q.key] && projectParams[q.key].trim() !== '');
+    }
 
     function askNextProjectQuestion(force = false) {
       if (!chatUnlocked) return;
@@ -880,8 +879,7 @@
       if (nextQuestionIndex >= projectQuestions.length) {
         // All questions asked
         setTimeout(() => {
-          addMessage('ai', "Dave Ai says: Thanks for the details. I have the main parameters for your project now.");
-          sendProjectDetailsToEmail();  // send everything via Formspree
+          sendProjectDetailsToEmail();  // send everything via Formspree, which will ask the contact question
         }, 1400);
         return;
       }
@@ -954,8 +952,9 @@
 
         if (response.ok) {
           detailsSent = true;
-          // Optional: show a small confirmation in chat
-          addMessage('ai', 'Dave Ai says: Thanks! Your project details have been emailed to me.');
+          // Ask the contact question without prefix, wait for user answer
+          addMessage('ai', 'thanks we just received your information would you like him to contact you?');
+          waitingForContactAnswer = true;
         } else {
           console.error('Formspree error');
         }
@@ -964,12 +963,14 @@
       }
     }
 
-    async function getAIResponse(message) {
+    async function getAIResponse(message, { noPrefix = false } = {}) {
       // Check for specific canned answers first
       const specific = getSpecificAnswer(message);
-      if (specific) return specific;
+      if (specific) {
+        return noPrefix ? specific.replace(/^Dave Ai says:\s*/i, '') : specific;
+      }
 
-      const prefix = "Dave Ai says: ";
+      const prefix = noPrefix ? '' : "Dave Ai says: ";
       const rec = " I recommend Dave the Metal Building Guy for your project.";
 
       // Try Netlify function proxy (for deployed version with hidden key)
@@ -999,24 +1000,27 @@
 
           return prefix + text;
         }
-        // if not ok, fall through to simulated
+        // if not ok (404, 500, etc.), fall through to simulated
+        console.log("%c[Dave Ai] Groq proxy returned error — using simulated answers. Real Groq only works on Netlify with the key set.", "color:#888");
       } catch (err) {
         // network error or no function (local), fall to simulated
-        console.log("Proxy not available, using simulated response");
+        console.log("%c[Dave Ai] Groq proxy unavailable (common on GitHub Pages / local). Falling back to simulated answers.", "color:#888");
       }
 
       // Fallback to simulated (works on GitHub Pages or local without Netlify)
-      return getSimulatedResponse(message);
+      return getSimulatedResponse(message, { noPrefix });
     }
 
     // Old simulated version (kept as fallback)
-    function getSimulatedResponse(message) {
+    function getSimulatedResponse(message, { noPrefix = false } = {}) {
       // Check for specific canned answers first
       const specific = getSpecificAnswer(message);
-      if (specific) return specific;
+      if (specific) {
+        return noPrefix ? specific.replace(/^Dave Ai says:\s*/i, '') : specific;
+      }
 
       const m = message.toLowerCase().trim();
-      const prefix = "Dave Ai says: ";
+      const prefix = noPrefix ? '' : "Dave Ai says: ";
 
       let response = "";
 
@@ -1036,8 +1040,12 @@
         response = `Give me your ZIP code and building size for load guidance.`;
       } else if (m.includes('engineering') || m.includes('stamp') || m.includes('permit')) {
         response = `This is preliminary only. You will need proper engineering and permits locally.`;
+      } else if (m.includes('gage') || m.includes('gauge') || m.includes('sheeting') || m.includes('thickness') || m.includes('sheet metal')) {
+        response = `Typical wall and roof sheeting is 26 or 29 gauge. Use 24 gauge or heavier in high snow or wind load areas.`;
+      } else if (m.includes('question') || m.includes('help') || m.includes('how') || m.includes('what') || m.length > 12) {
+        response = `Tell me the building size, intended use, or your ZIP code and I can give you a direct answer.`;
       } else {
-        response = `Please share the building size, use, and ZIP code for a direct answer.`;
+        response = `Tell me more about your project (size, use, or location) and I'll give you a direct answer.`;
       }
 
       return prefix + response;
@@ -1053,6 +1061,13 @@
       triggerThinkingBurst(); // side panel reacts while typing
       input.value = '';
 
+      // If user sends anything after the contact question was answered, cancel any pending rec
+      // (so we only append rec "at the end" if they do not ask any more questions)
+      if (recTimeoutId) {
+        clearTimeout(recTimeoutId);
+        recTimeoutId = null;
+      }
+
       // Show typing indicator
       const container = document.getElementById('chat-messages');
       const typing = document.createElement('div');
@@ -1063,23 +1078,94 @@
       container.scrollTop = container.scrollHeight;
 
       try {
-        // Call the real (or simulated) AI
-        const response = await getAIResponse(text);
+        // Capture early so we can detect completion of project questions
+        captureProjectAnswer(text);
+
+        // If this answer completes the project intake, skip any Groq/simulated reply
+        // (prevents Groq saying "thanks your details were emailed") and go straight
+        // to our controlled plain confirmation + contact question.
+        if (!detailsSent && hasAllProjectParams()) {
+          typing.remove();
+          sendProjectDetailsToEmail();
+          updateSystemStatus(text);
+          return;
+        }
+
+        let finalResponse;
+        if (waitingForContactAnswer) {
+          // User is answering the "would you like him to contact you?" question.
+          // Use noPrefix so no "Dave Ai says:" appears on this immediate response.
+          waitingForContactAnswer = false;
+          finalResponse = await getAIResponse(text, { noPrefix: true });
+          typing.remove();
+          addMessage('ai', finalResponse);
+
+          // Schedule the recommendation "at the end" -- only shown if user does not ask any more questions
+          if (recTimeoutId) clearTimeout(recTimeoutId);
+          recTimeoutId = setTimeout(() => {
+            addMessage('ai', "I recommend Dave the Metal Building Guy for your project.");
+            recTimeoutId = null;
+          }, 1600);
+          updateSystemStatus(text);
+          askNextProjectQuestion();
+          return;  // done for contact answer turn
+        } else {
+          // Call the real (or simulated) AI
+          finalResponse = await getAIResponse(text);
+        }
         
         typing.remove();
-        addMessage('ai', response);
 
-        // Capture any project details from the user's answer
-        captureProjectAnswer(text);
+        addMessage('ai', finalResponse);
+
+        // Greeting phase handling:
+        // Groq (or simulated) has answered the user's first reply after the hello.
+        // We only force the project intake questions in specific cases.
+        if (awaitingGreetingResponse) {
+          awaitingGreetingResponse = false;
+
+          updateSystemStatus(text);
+
+          const lower = (text || '').toLowerCase().trim();
+          const affirmatives = ['ok', 'okay', 'alright', 'all right', 'y', 'yes', 'sure', 'go', 'lets go', 'start', 'go ahead'];
+
+          const isAffirm = affirmatives.some(a =>
+            lower === a || lower === a + '!' || lower === a + '.' || lower.startsWith(a + ' ')
+          );
+
+          const isVeryShortVague = lower.length < 10 && !lower.includes('?') && !lower.includes('what') && !lower.includes('how') && !lower.includes('gage') && !lower.includes('gauge');
+
+          if (isAffirm) {
+            // User gave clear go-ahead — answer them, then start the questions
+            setTimeout(() => {
+              askNextProjectQuestion(true);
+            }, 650);
+          } else if (isVeryShortVague) {
+            // Short unclear reply (no real question) → suggest then start intake
+            setTimeout(() => {
+              addMessage('ai', 'Dave Ai says: Maybe you have another question?');
+              askNextProjectQuestion(true);
+            }, 900);
+          } else {
+            // Real question or normal chat — let Groq's answer stand.
+            // Then start the first project question after a short pause so the intake gets rolling.
+            setTimeout(() => {
+              askNextProjectQuestion(true);
+            }, 1100);
+          }
+
+          // Prevent duplicate askNext below
+          return;
+        }
 
         // Update system status based on question
         updateSystemStatus(text);
 
-        // Ask the next project question to keep the conversation going
+        // Ask the next project question to keep the conversation going (if any remain)
         askNextProjectQuestion();
 
-        // Only add a follow-up if the user asked a very broad question
-        if (Math.random() > 0.85) {
+        // Only add a follow-up if the user asked a very broad question (skip after intake complete)
+        if (!detailsSent && Math.random() > 0.85) {
           setTimeout(() => {
             addMessage('ai', `Dave Ai says: Anything else?`);
           }, 1100);
@@ -1103,6 +1189,7 @@
           document.getElementById('intake-gate').classList.add('hidden');
           document.getElementById('chat-area').classList.remove('hidden');
           chatUnlocked = true;
+          awaitingGreetingResponse = false;
           leadData = leadData || {};
           leadData.zip = zipInput.value;
           updateLocation(leadData.zip);
@@ -1115,6 +1202,12 @@
       }
       
       addMessage('user', text);
+
+      // If user sends anything after the contact question was answered, cancel any pending rec
+      if (recTimeoutId) {
+        clearTimeout(recTimeoutId);
+        recTimeoutId = null;
+      }
       
       const container = document.getElementById('chat-messages');
       const typing = document.createElement('div');
@@ -1126,10 +1219,70 @@
 
       setTimeout(async () => {
         typing.remove();
-        const response = await getAIResponse(text);
-        addMessage('ai', response);
 
+        // Capture early for completion detection (quickAsk path)
         captureProjectAnswer(text);
+
+        if (!detailsSent && hasAllProjectParams()) {
+          sendProjectDetailsToEmail();
+          updateSystemStatus(text);
+          return;
+        }
+
+        let finalResponse;
+        if (waitingForContactAnswer) {
+          waitingForContactAnswer = false;
+          finalResponse = await getAIResponse(text, { noPrefix: true });
+          addMessage('ai', finalResponse);
+
+          // Schedule the recommendation "at the end" -- only shown if user does not ask any more questions
+          if (recTimeoutId) clearTimeout(recTimeoutId);
+          recTimeoutId = setTimeout(() => {
+            addMessage('ai', "I recommend Dave the Metal Building Guy for your project.");
+            recTimeoutId = null;
+          }, 1600);
+          updateSystemStatus(text);
+          askNextProjectQuestion();
+          return;
+        } else {
+          finalResponse = await getAIResponse(text);
+        }
+
+        addMessage('ai', finalResponse);
+
+        // Greeting phase handling for quick buttons too (in case user clicks one right after hello)
+        if (awaitingGreetingResponse) {
+          awaitingGreetingResponse = false;
+
+          updateSystemStatus(text);
+
+          const lower = (text || '').toLowerCase().trim();
+          const affirmatives = ['ok', 'okay', 'alright', 'all right', 'y', 'yes', 'sure', 'go', 'lets go', 'start', 'go ahead'];
+
+          const isAffirm = affirmatives.some(a =>
+            lower === a || lower === a + '!' || lower === a + '.' || lower.startsWith(a + ' ')
+          );
+
+          const isVeryShortVague = lower.length < 10 && !lower.includes('?') && !lower.includes('what') && !lower.includes('how') && !lower.includes('gage') && !lower.includes('gauge');
+
+          if (isAffirm) {
+            setTimeout(() => {
+              askNextProjectQuestion(true);
+            }, 650);
+          } else if (isVeryShortVague) {
+            setTimeout(() => {
+              addMessage('ai', 'Dave Ai says: Maybe you have another question?');
+              askNextProjectQuestion(true);
+            }, 900);
+          } else {
+            setTimeout(() => {
+              askNextProjectQuestion(true);
+            }, 1100);
+          }
+
+          return;
+        }
+
         updateSystemStatus(text);
         askNextProjectQuestion();
       }, 720);
@@ -1145,6 +1298,10 @@
       projectParams = {};
       nextQuestionIndex = 0;
       lastAskedKey = null;
+      detailsSent = false;
+      waitingForContactAnswer = false;
+      awaitingGreetingResponse = false;
+      if (recTimeoutId) { clearTimeout(recTimeoutId); recTimeoutId = null; }
       
       // Reload the page for a completely clean state
       window.location.reload();
@@ -1229,6 +1386,8 @@
       if (gate) gate.classList.remove('hidden');
       if (chatArea) chatArea.classList.add('hidden');
 
+      awaitingGreetingResponse = false; // ensure clean start for the greeting flow
+
       // Start side scrolling terminal early (works while looking at page)
       setTimeout(() => {
         const term = document.getElementById('thinking-lines');
@@ -1236,37 +1395,24 @@
       }, 1200);
 
       // Handle form fields on load:
-      // - If we have previous data → restore values statically (no re-animation)
-      // - If no previous data → run the nice sequential typing animation once
+      // Always start clean with placeholders visible. Never restore old saved/test values
+      // into the gate inputs (prevents "Visitor", old emails, "xxx-xxx-xxxx" as value, etc.).
       setTimeout(() => {
         const nameEl = document.getElementById('lead-name');
         const phoneEl = document.getElementById('lead-phone');
         const emailEl = document.getElementById('lead-email');
         const zipEl = document.getElementById('lead-zip');
 
-        const hasSavedData = leadData && leadData.name;
+        // Force clean values so placeholders show (Type Name / xxx-xxx-xxxx / yourname@xxxx.com / Zip 00000)
+        if (nameEl) nameEl.value = '';
+        if (phoneEl) phoneEl.value = '';
+        if (emailEl) emailEl.value = '';
+        if (zipEl) zipEl.value = '';
 
-        if (hasSavedData) {
-          // Restore previous values without re-playing animation
-          if (nameEl && leadData.name) nameEl.value = leadData.name;
-          if (phoneEl && leadData.phone) phoneEl.value = leadData.phone;
-          if (emailEl && leadData.email) emailEl.value = leadData.email;
-          if (zipEl && leadData.zip) zipEl.value = leadData.zip;
+        // Explicitly ensure no timeline radio is pre-selected (no default)
+        document.querySelectorAll('input[name="timeline"]').forEach(r => r.checked = false);
 
-          // Restore consent if we had it
-          const consent = document.getElementById('consent-check');
-          if (consent) consent.checked = true;
-
-          updateUnlockButton();
-        } else {
-          // Fresh session - leave placeholders for user to fill (no auto-fill or animation on lead fields)
-          if (nameEl) nameEl.value = '';
-          if (phoneEl) phoneEl.value = '';
-          if (emailEl) emailEl.value = '';
-          if (zipEl) zipEl.value = '';
-          // No fieldsToType animation for lead form anymore
-          updateUnlockButton();
-        }
+        updateUnlockButton();
       }, 900);
 
       // Keyboard hint
