@@ -579,6 +579,7 @@
         // New greeting - no recommendation at the beginning
         const helloText = `Hello ${firstName}. I'm Dave Ai. so lets get started. Ill ask you some questions to get it rolling.`;
         addMessageWithTyping('ai', helloText);
+        chatHistory.push({ role: 'assistant', content: helloText });
 
         awaitingGreetingResponse = true;
       }
@@ -858,6 +859,7 @@
     let waitingForContactAnswer = false;
     let recTimeoutId = null;
     let awaitingGreetingResponse = false;
+    let chatHistory = [];
 
     const projectQuestions = [
       { key: 'size', text: "How big of a building are you thinking of? (for example, 40x60 or width by length)" },
@@ -911,10 +913,15 @@
     function captureProjectAnswer(userMessage) {
       let captured = false;
       if (lastAskedKey && !projectParams[lastAskedKey]) {
-        projectParams[lastAskedKey] = userMessage.trim();
+        const trimmed = userMessage.trim();
+        // Avoid capturing meta responses like "I just told you", "yes", short confirmations as project data
+        const isMeta = trimmed.length < 4 || /^(yes|no|ok|okay|already|told you|just said|you said)$/i.test(trimmed);
+        if (!isMeta) {
+          projectParams[lastAskedKey] = trimmed;
+          captured = true;
+        }
         lastAskedKey = null;
         lastAskedQuestion = null;
-        captured = true;
         // continue to fallbacks to capture any additional details (e.g. size + pitch in one reply)
       }
 
@@ -986,6 +993,7 @@
           lastAskedQuestion = null;
           // Ask the contact question without prefix, wait for user answer
           addMessage('ai', 'thanks we just received your information would you like him to contact you?');
+          chatHistory.push({ role: 'assistant', content: 'thanks we just received your information would you like him to contact you?' });
           waitingForContactAnswer = true;
         } else {
           console.error('Formspree error');
@@ -1014,7 +1022,8 @@
           },
           body: JSON.stringify({
             message: message,
-            projectParams: projectParams || {}
+            projectParams: projectParams || {},
+            history: chatHistory.slice(-10) // send recent history for context awareness
           })
         });
 
@@ -1092,6 +1101,7 @@
 
       const text = input.value.trim();
       addMessage('user', text);
+      chatHistory.push({ role: 'user', content: text });
       triggerThinkingBurst(); // side panel reacts while typing
       input.value = '';
 
@@ -1139,7 +1149,9 @@
           // Schedule the recommendation "at the end" -- only shown if user does not ask any more questions
           if (recTimeoutId) clearTimeout(recTimeoutId);
           recTimeoutId = setTimeout(() => {
-            addMessage('ai', "I recommend Dave the Metal Building Guy for your project.");
+            const recMsg = "I recommend Dave the Metal Building Guy for your project.";
+            addMessage('ai', recMsg);
+            chatHistory.push({ role: 'assistant', content: recMsg });
             recTimeoutId = null;
           }, 1600);
           updateSystemStatus(text);
@@ -1158,6 +1170,7 @@
         typing.remove();
 
         addMessage('ai', finalResponse);
+        chatHistory.push({ role: 'assistant', content: finalResponse.replace(/^Dave Ai says:\s*/i, '') });
 
         // Greeting phase handling:
         // Groq (or simulated) has answered the user's first reply after the hello.
@@ -1179,19 +1192,20 @@
           if (isAffirm) {
             // User gave clear go-ahead — answer them, then start the questions
             setTimeout(() => {
-              askNextProjectQuestion(true);
+              askNextProjectQuestion();
             }, 650);
           } else if (isVeryShortVague) {
             // Short unclear reply (no real question) → suggest then start intake
             setTimeout(() => {
               addMessage('ai', 'Dave Ai says: Maybe you have another question?');
-              askNextProjectQuestion(true);
+              chatHistory.push({ role: 'assistant', content: 'Maybe you have another question?' });
+              askNextProjectQuestion();
             }, 900);
           } else {
             // Real question or normal chat — let Groq's answer stand.
             // Then start the first project question after a short pause so the intake gets rolling.
             setTimeout(() => {
-              askNextProjectQuestion(true);
+              askNextProjectQuestion();
             }, 1100);
           }
 
@@ -1211,7 +1225,9 @@
         // Only add a follow-up if the user asked a very broad question (skip after intake complete)
         if (!detailsSent && Math.random() > 0.85) {
           setTimeout(() => {
-            addMessage('ai', `Dave Ai says: Anything else?`);
+            const msg = `Dave Ai says: Anything else?`;
+            addMessage('ai', msg);
+            chatHistory.push({ role: 'assistant', content: msg.replace(/^Dave Ai says:\s*/i, '') });
           }, 1100);
         }
       } catch (err) {
@@ -1236,6 +1252,7 @@
           awaitingGreetingResponse = false;
           lastAskedKey = null;
           lastAskedQuestion = null;
+          chatHistory = [];
           leadData = leadData || {};
           leadData.zip = zipInput.value;
           updateLocation(leadData.zip);
@@ -1248,6 +1265,7 @@
       }
       
       addMessage('user', text);
+      chatHistory.push({ role: 'user', content: text });
 
       // If user sends anything after the contact question was answered, cancel any pending rec
       if (recTimeoutId) {
@@ -1285,7 +1303,9 @@
           // Schedule the recommendation "at the end" -- only shown if user does not ask any more questions
           if (recTimeoutId) clearTimeout(recTimeoutId);
           recTimeoutId = setTimeout(() => {
-            addMessage('ai', "I recommend Dave the Metal Building Guy for your project.");
+            const recMsg = "I recommend Dave the Metal Building Guy for your project.";
+            addMessage('ai', recMsg);
+            chatHistory.push({ role: 'assistant', content: recMsg });
             recTimeoutId = null;
           }, 1600);
           updateSystemStatus(text);
@@ -1301,6 +1321,7 @@
         }
 
         addMessage('ai', finalResponse);
+        chatHistory.push({ role: 'assistant', content: finalResponse.replace(/^Dave Ai says:\s*/i, '') });
 
         // Greeting phase handling for quick buttons too (in case user clicks one right after hello)
         if (awaitingGreetingResponse) {
@@ -1319,16 +1340,17 @@
 
           if (isAffirm) {
             setTimeout(() => {
-              askNextProjectQuestion(true);
+              askNextProjectQuestion();
             }, 650);
           } else if (isVeryShortVague) {
             setTimeout(() => {
               addMessage('ai', 'Dave Ai says: Maybe you have another question?');
-              askNextProjectQuestion(true);
+              chatHistory.push({ role: 'assistant', content: 'Maybe you have another question?' });
+              askNextProjectQuestion();
             }, 900);
           } else {
             setTimeout(() => {
-              askNextProjectQuestion(true);
+              askNextProjectQuestion();
             }, 1100);
           }
 
@@ -1356,6 +1378,7 @@
       detailsSent = false;
       waitingForContactAnswer = false;
       awaitingGreetingResponse = false;
+      chatHistory = [];
       if (recTimeoutId) { clearTimeout(recTimeoutId); recTimeoutId = null; }
       
       // Reload the page for a completely clean state
