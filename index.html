@@ -814,10 +814,18 @@
           lower.includes("phone number") ||
           lower.includes("call dave") ||
           lower.includes("contact dave") ||
+          lower.includes("dave call") ||
+          lower.includes("have dave call") ||
+          lower.includes("dave call me") ||
+          lower.includes("call me") ||
+          lower.includes("have him call") ||
+          lower.includes("please call") ||
           lower.includes("how do i reach dave") ||
           lower.includes("how can i reach dave") ||
           lower.includes("how do i contact") ||
           lower.includes("how can i contact") ||
+          lower.includes("contact me") ||
+          lower.includes("reach me") ||
           lower.includes("dave's email") ||
           lower.includes("daves email") ||
           lower.includes("your email") ||
@@ -884,20 +892,27 @@
         return;
       }
 
+      if (lastAskedKey && !force) {
+        return; // waiting for answer to the current question before asking the next
+      }
+
       const q = projectQuestions[nextQuestionIndex];
+      lastAskedKey = q.key;
+      nextQuestionIndex++;
       setTimeout(() => {
         addMessage('ai', `Dave Ai says: ${q.text}`);
-        lastAskedKey = q.key;
-        nextQuestionIndex++;
       }, 1600);
     }
 
     // Capture rough answers from user messages for project parameters
+    // Returns true if a project param was filled (either via lastAsked or fallback)
     function captureProjectAnswer(userMessage) {
+      let captured = false;
       if (lastAskedKey && !projectParams[lastAskedKey]) {
         projectParams[lastAskedKey] = userMessage.trim();
         lastAskedKey = null;
-        return;
+        captured = true;
+        return captured;
       }
 
       const lower = userMessage.toLowerCase();
@@ -905,17 +920,24 @@
       // Fallback keyword extraction if we missed tracking the last question
       if (!projectParams.size && (lower.includes('x') || lower.includes('by') || /\d/.test(lower))) {
         projectParams.size = userMessage.trim();
+        captured = true;
       } else if (!projectParams.eaveHeight && (lower.includes('eave') || lower.includes('high') || lower.includes('height') || lower.includes('tall'))) {
         projectParams.eaveHeight = userMessage.trim();
+        captured = true;
       } else if (!projectParams.roofPitch && (lower.includes('pitch') || lower.includes('slope') || lower.includes('roof'))) {
         projectParams.roofPitch = userMessage.trim();
+        captured = true;
       } else if (!projectParams.largeOpenings && (lower.includes('door') || lower.includes('opening') || lower.includes('large'))) {
         projectParams.largeOpenings = userMessage.trim();
+        captured = true;
       } else if (!projectParams.insulation && lower.includes('insulat')) {
         projectParams.insulation = userMessage.trim();
+        captured = true;
       } else if (!projectParams.skylights && (lower.includes('skylight') || lower.includes('light') || lower.includes('roof light'))) {
         projectParams.skylights = userMessage.trim();
+        captured = true;
       }
+      return captured;
     }
 
     // === SEND TO EMAIL using Formspree (easiest for static site) ===
@@ -1079,7 +1101,7 @@
 
       try {
         // Capture early so we can detect completion of project questions
-        captureProjectAnswer(text);
+        const answeredProject = captureProjectAnswer(text);
 
         // If this answer completes the project intake, skip any Groq/simulated reply
         // (prevents Groq saying "thanks your details were emailed") and go straight
@@ -1161,8 +1183,11 @@
         // Update system status based on question
         updateSystemStatus(text);
 
-        // Ask the next project question to keep the conversation going (if any remain)
-        askNextProjectQuestion();
+        // Only advance project intake if the user just answered a project question.
+        // This prevents interrupting normal chat with repeated project questions.
+        if (answeredProject) {
+          askNextProjectQuestion();
+        }
 
         // Only add a follow-up if the user asked a very broad question (skip after intake complete)
         if (!detailsSent && Math.random() > 0.85) {
@@ -1221,7 +1246,7 @@
         typing.remove();
 
         // Capture early for completion detection (quickAsk path)
-        captureProjectAnswer(text);
+        const answeredProject = captureProjectAnswer(text);
 
         if (!detailsSent && hasAllProjectParams()) {
           sendProjectDetailsToEmail();
@@ -1284,7 +1309,9 @@
         }
 
         updateSystemStatus(text);
-        askNextProjectQuestion();
+        if (answeredProject) {
+          askNextProjectQuestion();
+        }
       }, 720);
     }
 
