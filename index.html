@@ -853,6 +853,7 @@
     let projectParams = {};
     let nextQuestionIndex = 0;
     let lastAskedKey = null;
+    let lastAskedQuestion = null;
     let detailsSent = false;
     let waitingForContactAnswer = false;
     let recTimeoutId = null;
@@ -898,6 +899,7 @@
 
       const q = projectQuestions[nextQuestionIndex];
       lastAskedKey = q.key;
+      lastAskedQuestion = q.text;
       nextQuestionIndex++;
       setTimeout(() => {
         addMessage('ai', `Dave Ai says: ${q.text}`);
@@ -911,29 +913,35 @@
       if (lastAskedKey && !projectParams[lastAskedKey]) {
         projectParams[lastAskedKey] = userMessage.trim();
         lastAskedKey = null;
+        lastAskedQuestion = null;
         captured = true;
-        return captured;
+        // continue to fallbacks to capture any additional details (e.g. size + pitch in one reply)
       }
 
       const lower = userMessage.toLowerCase();
 
-      // Fallback keyword extraction if we missed tracking the last question
+      // Fallback keyword extraction - independent ifs so one message can provide multiple details
       if (!projectParams.size && (lower.includes('x') || lower.includes('by') || /\d/.test(lower))) {
         projectParams.size = userMessage.trim();
         captured = true;
-      } else if (!projectParams.eaveHeight && (lower.includes('eave') || lower.includes('high') || lower.includes('height') || lower.includes('tall'))) {
+      }
+      if (!projectParams.eaveHeight && (lower.includes('eave') || lower.includes('high') || lower.includes('height') || lower.includes('tall'))) {
         projectParams.eaveHeight = userMessage.trim();
         captured = true;
-      } else if (!projectParams.roofPitch && (lower.includes('pitch') || lower.includes('slope') || lower.includes('roof'))) {
+      }
+      if (!projectParams.roofPitch && (lower.includes('pitch') || lower.includes('slope') || lower.includes('roof'))) {
         projectParams.roofPitch = userMessage.trim();
         captured = true;
-      } else if (!projectParams.largeOpenings && (lower.includes('door') || lower.includes('opening') || lower.includes('large'))) {
+      }
+      if (!projectParams.largeOpenings && (lower.includes('door') || lower.includes('opening') || lower.includes('large'))) {
         projectParams.largeOpenings = userMessage.trim();
         captured = true;
-      } else if (!projectParams.insulation && lower.includes('insulat')) {
+      }
+      if (!projectParams.insulation && lower.includes('insulat')) {
         projectParams.insulation = userMessage.trim();
         captured = true;
-      } else if (!projectParams.skylights && (lower.includes('skylight') || lower.includes('light') || lower.includes('roof light'))) {
+      }
+      if (!projectParams.skylights && (lower.includes('skylight') || lower.includes('light') || lower.includes('roof light'))) {
         projectParams.skylights = userMessage.trim();
         captured = true;
       }
@@ -974,6 +982,8 @@
 
         if (response.ok) {
           detailsSent = true;
+          lastAskedKey = null;
+          lastAskedQuestion = null;
           // Ask the contact question without prefix, wait for user answer
           addMessage('ai', 'thanks we just received your information would you like him to contact you?');
           waitingForContactAnswer = true;
@@ -1046,7 +1056,9 @@
 
       let response = "";
 
-      if (m.includes('red iron') || m.includes('rigid frame') || m.includes('i-beam')) {
+      if (m.includes('was just asked') || m.includes('their answer was')) {
+        response = `Thanks, I've noted those project details.`;
+      } else if (m.includes('red iron') || m.includes('rigid frame') || m.includes('i-beam')) {
         response = `Red iron works best for large spans and heavy loads. Cold-formed is cheaper and faster for smaller buildings.`;
       } else if (m.includes('cold form') || m.includes('cold-formed') || m.includes('light gauge')) {
         response = `Cold-formed steel is good for smaller or simpler buildings and is usually less expensive than red iron.`;
@@ -1132,8 +1144,13 @@
           askNextProjectQuestion();
           return;  // done for contact answer turn
         } else {
-          // Call the real (or simulated) AI
-          finalResponse = await getAIResponse(text);
+          // Allow Groq to analyze project answers by providing context of the question asked
+          let messageForAI = text;
+          if (answeredProject && lastAskedQuestion) {
+            messageForAI = `The user was just asked: "${lastAskedQuestion}". Their answer was: "${text}". Analyze this answer in the context of metal building projects. Give a short, direct confirmation or helpful comment based on what they said (e.g. acknowledge the size, height, pitch, etc.). Do not ask for more project details.`;
+          }
+          // Call the real (or simulated) AI with possible context for project answers
+          finalResponse = await getAIResponse(messageForAI);
         }
         
         typing.remove();
@@ -1215,6 +1232,8 @@
           document.getElementById('chat-area').classList.remove('hidden');
           chatUnlocked = true;
           awaitingGreetingResponse = false;
+          lastAskedKey = null;
+          lastAskedQuestion = null;
           leadData = leadData || {};
           leadData.zip = zipInput.value;
           updateLocation(leadData.zip);
@@ -1270,7 +1289,12 @@
           askNextProjectQuestion();
           return;
         } else {
-          finalResponse = await getAIResponse(text);
+          // Allow Groq to analyze project answers by providing context of the question asked
+          let messageForAI = text;
+          if (answeredProject && lastAskedQuestion) {
+            messageForAI = `The user was just asked: "${lastAskedQuestion}". Their answer was: "${text}". Analyze this answer in the context of metal building projects. Give a short, direct confirmation or helpful comment based on what they said (e.g. acknowledge the size, height, pitch, etc.). Do not ask for more project details.`;
+          }
+          finalResponse = await getAIResponse(messageForAI);
         }
 
         addMessage('ai', finalResponse);
@@ -1325,6 +1349,7 @@
       projectParams = {};
       nextQuestionIndex = 0;
       lastAskedKey = null;
+      lastAskedQuestion = null;
       detailsSent = false;
       waitingForContactAnswer = false;
       awaitingGreetingResponse = false;
