@@ -13,14 +13,24 @@ A simple static web demo for collecting metal building project details through a
 Just open `index.html` in any browser.
 
 ## Deployment (GitHub + Netlify)
-1. Push this folder to a GitHub repo.
-2. Import the repo into Netlify.
-3. Set `GROQ_API_KEY` in Netlify Environment Variables.
-4. Update `FORMSPREE_ENDPOINT` in `index.html` with your real Formspree form ID.
-5. Deploy.
+1. Push code to your GitHub repo.
+2. In Netlify: "New site from Git" → select the repo.
+3. Build settings:
+   - Base directory: (leave blank)
+   - Build command: (leave blank)
+   - Publish directory: `.`
+4. Deploy.
+5. Go to Site configuration → Environment variables and add:
+   - Key: `GROQ_API_KEY`
+   - Value: your Groq key
+6. (Optional) Redeploy.
 
-The site is fully static but uses a Netlify Function to securely call the Groq API.
+Once the site is connected this way, every push to the main branch on GitHub will automatically trigger a new deploy on Netlify.
 
 ## Notes
-- Remove or replace the Groq key before making the repo public.
-- The guided chat helps gather complete project info without repeating questions.
+- **Groq key**: You can (and are allowed to) use the **exact same key** for multiple copies or rebranded versions. Set the same `GROQ_API_KEY` env var on the new Netlify site. No new key required.
+- Note: All usage shares the same Groq quota/rate limits.
+- If you prefer separation (different clients, easier to revoke later), you can create a new key in the Groq console.
+- **Formspree**: The endpoint is per-form. Reuse it or create a new one.
+- Rebranding: Edit text in `index.html` (search for "Dave Ai", titles, contact info, etc.). Update logo if needed.
+- Netlify function code does not need changes.

@@ -242,12 +242,11 @@
     </div>
     
     <h1 class="text-6xl md:text-7xl font-display tracking-tighter font-semibold leading-none">
-      The AI-Powered<br>
-      <span class="metal-gradient">Future of Metal Buildings</span>
+      The Future of 'DIY' Metal Buildings
     </h1>
     
     <p class="mt-4 max-w-md mx-auto text-xl text-zinc-400">
-      Talk to Dave Ai — your intelligent guide for red iron, cold-formed steel, loads, foundations, and project planning.
+      Your intelligent guide for red iron, cold-formed steel, loads, foundations, and project planning.
     </p>
   </div>
 
@@ -293,27 +292,27 @@
 
                 <!-- Right: Form fields (information boxes) -->
                 <div class="lg:w-7/12">
-                  <form id="aimbLeadForm" onsubmit="event.preventDefault(); unlockDaveAi();">
+                  <form id="aimbLeadForm" onsubmit="event.preventDefault(); var btn=document.getElementById('unlock-btn'); if(btn && !btn.disabled) unlockDaveAi();">
                     <div class="aimb-lead-grid mb-3">
                       <div>
-                        <input id="lead-name" type="text" value="" placeholder="First & Last Name" required class="aimb-lead-input">
+                        <input id="lead-name" type="text" value="" placeholder="Type Name" required class="aimb-lead-input">
                       </div>
                       <div>
-                        <input id="lead-phone" type="tel" value="" placeholder="Phone Number" required class="aimb-lead-input">
+                        <input id="lead-phone" type="tel" value="" placeholder="xxx-xxx-xxxx" required class="aimb-lead-input">
                       </div>
                     </div>
 
                     <div class="mb-3">
-                      <input id="lead-email" type="email" value="" placeholder="Email Address" required class="aimb-lead-input">
+                      <input id="lead-email" type="email" value="" placeholder="yourname@xxxx.com" required class="aimb-lead-input">
                     </div>
                     <div class="mb-3">
-                      <input id="lead-zip" type="text" value="" placeholder="Jobsite ZIP Code" maxlength="10" required class="aimb-lead-input">
+                      <input id="lead-zip" type="text" value="" placeholder="Zip 00000" maxlength="10" required class="aimb-lead-input">
                     </div>
 
                     <div class="mb-4">
                       <label class="block text-xs uppercase tracking-widest text-zinc-400 mb-1.5">When are you planning to build?</label>
                       <div class="flex flex-wrap gap-2 text-xs">
-                        <label class="cursor-pointer"><input type="radio" name="timeline" value="ASAP" checked class="mr-1"> ASAP</label>
+                        <label class="cursor-pointer"><input type="radio" name="timeline" value="ASAP" class="mr-1"> ASAP</label>
                         <label class="cursor-pointer"><input type="radio" name="timeline" value="0-3 Months" class="mr-1"> 0–3 Months</label>
                         <label class="cursor-pointer"><input type="radio" name="timeline" value="3-6 Months" class="mr-1"> 3–6 Months</label>
                         <label class="cursor-pointer"><input type="radio" name="timeline" value="Just Researching" class="mr-1"> Just Researching</label>
@@ -324,8 +323,8 @@
               </div>
 
               <!-- Big box button just below the information boxes (as liked in original) -->
-              <button onclick="unlockDaveAi()" 
-                      class="aimb-lead-btn w-full mt-2 text-base">
+              <button id="unlock-btn" onclick="unlockDaveAi()" 
+                      class="aimb-lead-btn w-full mt-2 text-base" disabled>
                 Unlock Dave Ai Chat
               </button>
 
@@ -474,14 +473,14 @@
   <!-- Contact modal -->
   <div id="contact-modal" onclick="if (event.target.id === 'contact-modal') hideContact()" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-[100]">
     <div onclick="event.stopImmediatePropagation()" class="bg-zinc-900 rounded-3xl p-8 max-w-md w-full mx-4 border border-zinc-700">
-      <h3 class="font-semibold text-xl">Contact AI Metal Buildings</h3>
+      <h3 class="font-semibold text-xl">Contact Dave Ai</h3>
       <p class="text-sm mt-1 text-zinc-400">Get help planning your project.</p>
       
       <div class="mt-5 space-y-3">
-        <input class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5 text-sm" placeholder="Name" value="Alex Rivera">
-        <input class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5 text-sm" placeholder="Email" value="alex@builder.dev">
-        <input class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5 text-sm" placeholder="Phone">
-        <input class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5 text-sm" placeholder="ZIP">
+        <input class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5 text-sm" placeholder="Type Name" value="">
+        <input class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5 text-sm" placeholder="yourname@xxxx.com" value="">
+        <input class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5 text-sm" placeholder="xxx-xxx-xxxx">
+        <input class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5 text-sm" placeholder="Zip 00000">
         <textarea class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-3 text-sm h-24" placeholder="Tell us about your project..."></textarea>
       </div>
       
@@ -1258,28 +1257,15 @@
           const consent = document.getElementById('consent-check');
           if (consent) consent.checked = true;
 
-          // Try to restore timeframe radio
-          if (leadData.timeframe) {
-            const matchingRadio = document.querySelector(`input[name="timeline"][value="${leadData.timeframe}"]`);
-            if (matchingRadio) matchingRadio.checked = true;
-          }
+          updateUnlockButton();
         } else {
-          // Fresh session - run the cool sequential typing animation
+          // Fresh session - leave placeholders for user to fill (no auto-fill or animation on lead fields)
           if (nameEl) nameEl.value = '';
           if (phoneEl) phoneEl.value = '';
           if (emailEl) emailEl.value = '';
           if (zipEl) zipEl.value = '';
-
-          const fieldsToType = [
-            [nameEl, 'Alex Rivera'],
-            [phoneEl, '254-705-5029'],
-            [emailEl, 'alex@builder.dev'],
-            [zipEl, '78641']
-          ].filter(([el]) => el);
-
-          if (fieldsToType.length > 0) {
-            typeFieldSequentially(fieldsToType);
-          }
+          // No fieldsToType animation for lead form anymore
+          updateUnlockButton();
         }
       }, 900);
 
@@ -1304,6 +1290,35 @@
           if (chatUnlocked && Math.random() > 0.6) triggerThinkingBurst();
         });
       }
+
+      // Enable unlock button only when all intake fields (name, phone, email, zip) + timeline radio are filled
+      function updateUnlockButton() {
+        const name = document.getElementById('lead-name') ? document.getElementById('lead-name').value.trim() : '';
+        const phone = document.getElementById('lead-phone') ? document.getElementById('lead-phone').value.trim() : '';
+        const email = document.getElementById('lead-email') ? document.getElementById('lead-email').value.trim() : '';
+        const zip = document.getElementById('lead-zip') ? document.getElementById('lead-zip').value.trim() : '';
+        const timeline = document.querySelector('input[name="timeline"]:checked');
+        const btn = document.getElementById('unlock-btn');
+        if (btn) {
+          btn.disabled = !(name && phone && email && zip && timeline);
+        }
+      }
+
+      // Attach listeners to lead form fields
+      ['lead-name', 'lead-phone', 'lead-email', 'lead-zip'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.addEventListener('input', updateUnlockButton);
+        }
+      });
+
+      // For timeline radios
+      document.querySelectorAll('input[name="timeline"]').forEach(radio => {
+        radio.addEventListener('change', updateUnlockButton);
+      });
+
+      // Initial state
+      updateUnlockButton();
 
       // Console tip
       console.log('%c[Dave Ai] Real AI enabled if you add a Groq key. Otherwise falls back to simulated answers.', 'color:#444');
